@@ -1,8 +1,16 @@
 import { db } from '@/lib/db'
-import { ensureDefaultUser, buildMemoryPrompt, extractMemoriesFromMessage } from '@/lib/memory'
+import { buildMemoryPrompt, extractMemoriesFromMessage, getConversationHistory, markStaleMemories, cleanupExpiredMemories, TOKEN_BUDGET, estimateTokens } from '@/lib/memory'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth'
 
 export async function POST(request: Request) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return Response.json({ error: '请先登录' }, { status: 401 })
+    }
+
+    const userId = session.user.id
     const body = await request.json()
     const { message, conversationId } = body
 
@@ -10,12 +18,11 @@ export async function POST(request: Request) {
       return Response.json({ error: '消息内容不能为空' }, { status: 400 })
     }
 
-    const user = await ensureDefaultUser()
-
+    // 获取或创建对话
     let conversation
     if (conversationId) {
-      conversation = await db.conversation.findUnique({
-        where: { id: conversationId },
+      conversation = await db.conversation.findFirst({
+        where: { id: conversationId, userId },
         include: { messages: { orderBy: { createdAt: 'asc' } } },
       })
     }
@@ -23,32 +30,38 @@ export async function POST(request: Request) {
     if (!conversation) {
       conversation = await db.conversation.create({
         data: {
-          userId: user.id,
+          userId,
           title: message.slice(0, 30) + (message.length > 30 ? '...' : ''),
         },
         include: { messages: true },
       })
     }
 
+    // 保存用户消息
     await db.message.create({
-      data: {
-        conversationId: conversation.id,
-        role: 'user',
-        content: message,
-      },
+      data: { conversationId: conversation.id, role: 'user', content: message },
     })
 
-    const systemPrompt = await buildMemoryPrompt(user.id)
+    // 构建带记忆的system prompt（滑动窗口 + 话题相关性）
+    const { prompt: systemPrompt, tokenCount: systemTokenCount } = await buildMemoryPrompt(userId, message)
 
+    // 获取对话历史（自动压缩 + token预算）
+    const historyMessages = await getConversationHistory(conversation.id, systemTokenCount)
+
+    // 如果对话有摘要，注入到system prompt中
+    let finalSystemPrompt = systemPrompt
+    if (conversation.summary) {
+      finalSystemPrompt += `\n\n📋 早期对话摘要:\n${conversation.summary}`
+    }
+
+    // 组装消息列表
     const chatMessages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...conversation.messages.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
+      { role: 'system' as const, content: finalSystemPrompt },
+      ...historyMessages,
       { role: 'user' as const, content: message },
     ]
 
+    // 调用LLM
     const ZAI = (await import('z-ai-web-dev-sdk')).default
     const zai = await ZAI.create()
 
@@ -59,18 +72,22 @@ export async function POST(request: Request) {
 
     const assistantContent = completion.choices[0]?.message?.content || '抱歉，我无法生成回复。'
 
+    // 保存助手回复
     await db.message.create({
-      data: {
-        conversationId: conversation.id,
-        role: 'assistant',
-        content: assistantContent,
-      },
+      data: { conversationId: conversation.id, role: 'assistant', content: assistantContent },
     })
 
     // 异步提取记忆
-    extractMemoriesFromMessage(user.id, message, assistantContent).catch((err) =>
+    extractMemoriesFromMessage(userId, message, assistantContent).catch((err) =>
       console.error('Background memory extraction failed:', err)
     )
+
+    // 异步清理过期记忆（低频执行，每次对话1%概率触发）
+    if (Math.random() < 0.01) {
+      cleanupExpiredMemories(userId).catch((err) =>
+        console.error('Memory cleanup failed:', err)
+      )
+    }
 
     return Response.json({
       conversationId: conversation.id,

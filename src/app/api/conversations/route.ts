@@ -1,18 +1,19 @@
 import { db } from '@/lib/db'
-import { ensureDefaultUser } from '@/lib/memory'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth'
 
-// 获取对话列表
 export async function GET() {
   try {
-    const user = await ensureDefaultUser()
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return Response.json({ error: '请先登录' }, { status: 401 })
+    }
+
     const conversations = await db.conversation.findMany({
-      where: { userId: user.id },
+      where: { userId: session.user.id },
       orderBy: { updatedAt: 'desc' },
       include: {
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
     })
     return Response.json(conversations)
@@ -22,15 +23,15 @@ export async function GET() {
   }
 }
 
-// 创建新对话
 export async function POST() {
   try {
-    const user = await ensureDefaultUser()
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return Response.json({ error: '请先登录' }, { status: 401 })
+    }
+
     const conversation = await db.conversation.create({
-      data: {
-        userId: user.id,
-        title: '新对话',
-      },
+      data: { userId: session.user.id, title: '新对话' },
     })
     return Response.json(conversation)
   } catch (error) {

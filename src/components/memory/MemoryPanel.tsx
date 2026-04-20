@@ -20,9 +20,17 @@ import {
   ChevronRight,
   Inbox,
   Layers,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  Clock,
+  RefreshCw,
+  CheckCheck,
+  XSquare,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -43,6 +51,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
@@ -68,6 +86,44 @@ const folderColorOptions = [
   { label: '黄色', value: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20' },
 ]
 
+function ExpiryBadge({ memory }: { memory: MemoryItem }) {
+  if (memory.isStale) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+        <AlertTriangle className="h-2.5 w-2.5" />
+        过时
+      </span>
+    )
+  }
+
+  if (memory.expiresAt) {
+    const expiresAt = new Date(memory.expiresAt)
+    const now = new Date()
+    const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (daysLeft <= 0) {
+      return (
+        <span className="inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded bg-red-500/10 text-red-600 border border-red-500/20">
+          <Clock className="h-2.5 w-2.5" />
+          已过期
+        </span>
+      )
+    }
+
+    if (daysLeft <= 30) {
+      return (
+        <span className="inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded bg-orange-500/10 text-orange-600 border border-orange-500/20">
+          <Clock className="h-2.5 w-2.5" />
+          {daysLeft}天过期
+        </span>
+      )
+    }
+  }
+
+  // 永不过期
+  return null
+}
+
 export function MemoryPanel() {
   const {
     memories,
@@ -84,6 +140,16 @@ export function MemoryPanel() {
     deleteFolder,
     setActiveFolderId,
     fetchFolders,
+    // 多选功能
+    selectedMemoryIds,
+    isMultiSelectMode,
+    toggleMultiSelectMode,
+    toggleMemorySelection,
+    selectAllMemories,
+    clearMemorySelection,
+    batchDeleteMemories,
+    // 清理功能
+    cleanupMemories,
   } = useAppStore()
 
   const [isAdding, setIsAdding] = useState(false)
@@ -98,6 +164,9 @@ export function MemoryPanel() {
   const [folderIcon, setFolderIcon] = useState('📁')
   const [folderColor, setFolderColor] = useState('bg-gray-500/10 text-gray-600 border-gray-500/20')
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false)
+  const [isCleaningUp, setIsCleaningUp] = useState(false)
+  const [cleanupResult, setCleanupResult] = useState<string | null>(null)
 
   useEffect(() => {
     if (showMemoryPanel) {
@@ -112,7 +181,9 @@ export function MemoryPanel() {
     ? memories
     : activeFolderId === 'unsorted'
       ? memories.filter((m) => !m.folderId)
-      : memories.filter((m) => m.folderId === activeFolderId)
+      : activeFolderId === 'stale'
+        ? memories.filter((m) => m.isStale)
+        : memories.filter((m) => m.folderId === activeFolderId)
 
   // 按分类分组
   const grouped = filteredMemories.reduce<Record<string, MemoryItem[]>>((acc, m) => {
@@ -164,7 +235,29 @@ export function MemoryPanel() {
     setShowFolderDialog(true)
   }
 
+  const handleCleanup = async () => {
+    setIsCleaningUp(true)
+    setCleanupResult(null)
+    try {
+      const result = await cleanupMemories()
+      if (result) {
+        setCleanupResult(
+          `已标记 ${result.markedStale} 条过时，删除 ${result.deletedExpired} 条过期，${result.scheduledForExpiry} 条即将过期`
+        )
+        setTimeout(() => setCleanupResult(null), 5000)
+      }
+    } finally {
+      setIsCleaningUp(false)
+    }
+  }
+
+  const handleBatchDelete = async () => {
+    await batchDeleteMemories()
+    setShowBatchDeleteConfirm(false)
+  }
+
   const unsortedCount = memories.filter((m) => !m.folderId).length
+  const staleCount = memories.filter((m) => m.isStale).length
 
   return (
     <div className="w-80 border-l bg-muted/30 flex flex-col h-full shrink-0">
@@ -179,10 +272,22 @@ export function MemoryPanel() {
             </span>
           </div>
           <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-8 w-8", isMultiSelectMode && "bg-primary/10 text-primary")}
+              onClick={toggleMultiSelectMode}
+              title="多选模式"
+            >
+              <CheckSquare className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCleanup} disabled={isCleaningUp} title="清理过期记忆">
+              <RefreshCw className={cn("h-4 w-4", isCleaningUp && "animate-spin")} />
+            </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowFolderDialog(true)}>
               <FolderPlus className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setIsAdding(true); setNewFolderId(activeFolderId === 'all' || activeFolderId === 'unsorted' ? null : activeFolderId) }}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setIsAdding(true); setNewFolderId(activeFolderId === 'all' || activeFolderId === 'unsorted' || activeFolderId === 'stale' ? null : activeFolderId) }}>
               <Plus className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleMemoryPanel}>
@@ -190,6 +295,34 @@ export function MemoryPanel() {
             </Button>
           </div>
         </div>
+
+        {/* 多选操作栏 */}
+        {isMultiSelectMode && (
+          <div className="mt-2 flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={selectAllMemories}>
+              <CheckCheck className="h-3 w-3" /> 全选
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={clearMemorySelection}>
+              <XSquare className="h-3 w-3" /> 取消
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7 text-xs gap-1 ml-auto"
+              disabled={selectedMemoryIds.size === 0}
+              onClick={() => setShowBatchDeleteConfirm(true)}
+            >
+              <Trash2 className="h-3 w-3" /> 删除({selectedMemoryIds.size})
+            </Button>
+          </div>
+        )}
+
+        {/* 清理结果提示 */}
+        {cleanupResult && (
+          <div className="mt-2 text-xs bg-green-500/10 text-green-600 border border-green-500/20 rounded px-2 py-1.5">
+            {cleanupResult}
+          </div>
+        )}
       </div>
 
       {/* 文件夹导航 */}
@@ -220,6 +353,21 @@ export function MemoryPanel() {
             <span className="flex-1 text-left">未分类</span>
             <span className="text-xs text-muted-foreground">{unsortedCount}</span>
           </button>
+
+          {/* 过时记忆 */}
+          {staleCount > 0 && (
+            <button
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors',
+                activeFolderId === 'stale' ? 'bg-amber-500/10 text-amber-600 font-medium' : 'hover:bg-muted'
+              )}
+              onClick={() => setActiveFolderId('stale')}
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span className="flex-1 text-left">过时记忆</span>
+              <span className="text-xs text-amber-600">{staleCount}</span>
+            </button>
+          )}
 
           {/* 文件夹列表 */}
           {folders.map((folder) => {
@@ -316,7 +464,7 @@ export function MemoryPanel() {
           {filteredMemories.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-8">
               <Brain className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p>{activeFolderId === 'all' ? '还没有记忆' : '此文件夹为空'}</p>
+              <p>{activeFolderId === 'stale' ? '没有过时的记忆' : activeFolderId === 'all' ? '还没有记忆' : '此文件夹为空'}</p>
               <p className="text-xs mt-1">和我聊天时，我会自动记住重要信息</p>
             </div>
           ) : (
@@ -336,18 +484,38 @@ export function MemoryPanel() {
                   </div>
                   <div className="space-y-1.5">
                     {items.map((memory) => (
-                      <Card key={memory.id} className="group">
+                      <Card key={memory.id} className={cn(
+                        "group",
+                        memory.isStale && "border-amber-500/30 bg-amber-500/5",
+                        selectedMemoryIds.has(memory.id) && "ring-2 ring-primary"
+                      )}>
                         <CardContent className="p-3">
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2">
+                            {/* 多选复选框 */}
+                            {isMultiSelectMode && (
+                              <div className="pt-0.5 shrink-0">
+                                <Checkbox
+                                  checked={selectedMemoryIds.has(memory.id)}
+                                  onCheckedChange={() => toggleMemorySelection(memory.id)}
+                                  className="h-4 w-4"
+                                />
+                              </div>
+                            )}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                                 <span className={cn('text-xs px-1.5 py-0.5 rounded border', config.color)}>
                                   {memory.key}
                                 </span>
+                                <ExpiryBadge memory={memory} />
                                 {memory.folder && (
                                   <span className="text-xs text-muted-foreground flex items-center gap-0.5">
                                     <Folder className="h-3 w-3" />
                                     {memory.folder.icon} {memory.folder.name}
+                                  </span>
+                                )}
+                                {memory.accessCount > 3 && (
+                                  <span className="text-[10px] text-muted-foreground" title={`被引用${memory.accessCount}次`}>
+                                    x{memory.accessCount}
                                   </span>
                                 )}
                               </div>
@@ -372,50 +540,55 @@ export function MemoryPanel() {
                                   </Button>
                                 </div>
                               ) : (
-                                <p className="text-sm text-foreground/80 break-words">
+                                <p className={cn(
+                                  "text-sm break-words",
+                                  memory.isStale ? "text-muted-foreground line-through" : "text-foreground/80"
+                                )}>
                                   {memory.value}
                                 </p>
                               )}
                             </div>
-                            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                              {/* 移动到文件夹 */}
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7">
-                                    <Folder className="h-3 w-3" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-40">
-                                  <DropdownMenuItem onClick={() => moveMemoryToFolder(memory.id, null)}>
-                                    <Inbox className="h-3 w-3 mr-2" /> 未分类
-                                  </DropdownMenuItem>
-                                  {folders.map((f) => (
-                                    <DropdownMenuItem
-                                      key={f.id}
-                                      onClick={() => moveMemoryToFolder(memory.id, f.id)}
-                                    >
-                                      <span className="mr-2">{f.icon}</span> {f.name}
+                            {!isMultiSelectMode && (
+                              <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                {/* 移动到文件夹 */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                                      <Folder className="h-3 w-3" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-40">
+                                    <DropdownMenuItem onClick={() => moveMemoryToFolder(memory.id, null)}>
+                                      <Inbox className="h-3 w-3 mr-2" /> 未分类
                                     </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleStartEdit(memory)}
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-destructive"
-                                onClick={() => deleteMemory(memory.id)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
+                                    {folders.map((f) => (
+                                      <DropdownMenuItem
+                                        key={f.id}
+                                        onClick={() => moveMemoryToFolder(memory.id, f.id)}
+                                      >
+                                        <span className="mr-2">{f.icon}</span> {f.name}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => handleStartEdit(memory)}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive"
+                                  onClick={() => deleteMemory(memory.id)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -431,7 +604,7 @@ export function MemoryPanel() {
 
       {/* 底部提示 */}
       <div className="p-3 border-t text-xs text-muted-foreground text-center shrink-0">
-        记忆在每次对话后自动提取
+        记忆在每次对话后自动提取 | 点击 <RefreshCw className="h-3 w-3 inline" /> 清理过期
       </div>
 
       {/* 创建/编辑文件夹对话框 */}
@@ -509,6 +682,24 @@ export function MemoryPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 批量删除确认对话框 */}
+      <AlertDialog open={showBatchDeleteConfirm} onOpenChange={setShowBatchDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认批量删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除选中的 {selectedMemoryIds.size} 条记忆吗？此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBatchDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

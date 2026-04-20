@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/store/useAppStore'
 import { useEffect, useState } from 'react'
-import { Plus, MessageSquare, Trash2, ChevronLeft, Menu, Brain } from 'lucide-react'
+import { Plus, MessageSquare, Trash2, ChevronLeft, Menu, Brain, LogOut, User as UserIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -14,7 +14,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { useSession, signOut } from 'next-auth/react'
 
 export function ConversationSidebar() {
   const {
@@ -30,6 +39,7 @@ export function ConversationSidebar() {
     setCurrentConversation,
   } = useAppStore()
 
+  const { data: session } = useSession()
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -56,6 +66,10 @@ export function ConversationSidebar() {
     }
   }
 
+  const handleSignOut = async () => {
+    await signOut({ callbackUrl: '/login' })
+  }
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     const now = new Date()
@@ -67,6 +81,10 @@ export function ConversationSidebar() {
     if (days < 7) return `${days}天前`
     return date.toLocaleDateString('zh-CN')
   }
+
+  const userName = session?.user?.name || '用户'
+  const userEmail = session?.user?.email || ''
+  const userInitial = userName.charAt(0).toUpperCase()
 
   if (!showSidebar) {
     return (
@@ -154,9 +172,34 @@ export function ConversationSidebar() {
           </div>
         </div>
 
-        {/* 底部提示 */}
-        <div className="p-3 border-t text-xs text-muted-foreground text-center shrink-0">
-          AI会自动记住你的偏好和信息
+        {/* 底部用户信息 */}
+        <div className="p-3 border-t shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors text-left">
+                <Avatar className="h-8 w-8 shrink-0">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                    {userInitial}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{userName}</div>
+                  <div className="text-xs text-muted-foreground truncate">{userEmail}</div>
+                </div>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem className="gap-2" disabled>
+                <UserIcon className="h-4 w-4" />
+                <span className="truncate">{userName}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4" />
+                退出登录
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

@@ -1,12 +1,17 @@
 import { db } from '@/lib/db'
-import { ensureDefaultUser } from '@/lib/memory'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth'
 
 // 获取用户所有记忆
 export async function GET() {
   try {
-    const user = await ensureDefaultUser()
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return Response.json({ error: '请先登录' }, { status: 401 })
+    }
+
     const memories = await db.memory.findMany({
-      where: { userId: user.id },
+      where: { userId: session.user.id },
       orderBy: { updatedAt: 'desc' },
       include: { folder: true },
     })
@@ -20,7 +25,11 @@ export async function GET() {
 // 手动添加记忆
 export async function POST(request: Request) {
   try {
-    const user = await ensureDefaultUser()
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return Response.json({ error: '请先登录' }, { status: 401 })
+    }
+
     const body = await request.json()
     const { category, key, value, folderId } = body
 
@@ -30,7 +39,7 @@ export async function POST(request: Request) {
 
     const memory = await db.memory.create({
       data: {
-        userId: user.id,
+        userId: session.user.id,
         category,
         key,
         value,
@@ -41,5 +50,35 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Create memory error:', error)
     return Response.json({ error: '创建记忆失败' }, { status: 500 })
+  }
+}
+
+// 批量删除记忆
+export async function DELETE(request: Request) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return Response.json({ error: '请先登录' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { ids } = body
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return Response.json({ error: '请选择要删除的记忆' }, { status: 400 })
+    }
+
+    // 确保只能删除自己的记忆
+    const result = await db.memory.deleteMany({
+      where: {
+        id: { in: ids },
+        userId: session.user.id,
+      },
+    })
+
+    return Response.json({ deleted: result.count })
+  } catch (error) {
+    console.error('Batch delete memories error:', error)
+    return Response.json({ error: '批量删除记忆失败' }, { status: 500 })
   }
 }

@@ -34,6 +34,10 @@ export interface MemoryItem {
   value: string
   folderId: string | null
   source?: string | null
+  accessCount: number
+  lastAccessedAt: string | null
+  expiresAt: string | null
+  isStale: boolean
   createdAt: string
   updatedAt: string
   folder?: MemoryFolder | null
@@ -52,10 +56,12 @@ interface AppState {
   // 记忆
   memories: MemoryItem[]
   isLoadingMemories: boolean
+  selectedMemoryIds: Set<string>
+  isMultiSelectMode: boolean
 
   // 文件夹
   folders: MemoryFolder[]
-  activeFolderId: string | 'all' | 'unsorted'
+  activeFolderId: string | 'all' | 'unsorted' | 'stale'
 
   // UI状态
   showMemoryPanel: boolean
@@ -70,10 +76,17 @@ interface AppState {
   setMemories: (memories: MemoryItem[]) => void
   setIsLoadingMemories: (v: boolean) => void
   setFolders: (folders: MemoryFolder[]) => void
-  setActiveFolderId: (id: string | 'all' | 'unsorted') => void
+  setActiveFolderId: (id: string | 'all' | 'unsorted' | 'stale') => void
   toggleMemoryPanel: () => void
   toggleSidebar: () => void
   setShowSidebar: (v: boolean) => void
+
+  // 多选模式
+  toggleMultiSelectMode: () => void
+  toggleMemorySelection: (id: string) => void
+  selectAllMemories: () => void
+  clearMemorySelection: () => void
+  batchDeleteMemories: () => Promise<void>
 
   // 对话 Actions
   fetchConversations: () => Promise<void>
@@ -87,6 +100,7 @@ interface AppState {
   updateMemory: (id: string, data: Partial<MemoryItem>) => Promise<void>
   addMemory: (data: { category: string; key: string; value: string; folderId?: string | null }) => Promise<void>
   moveMemoryToFolder: (memoryId: string, folderId: string | null) => Promise<void>
+  cleanupMemories: () => Promise<{ markedStale: number; deletedExpired: number; scheduledForExpiry: number } | null>
 
   // 文件夹 Actions
   fetchFolders: () => Promise<void>
@@ -103,6 +117,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   isSendingMessage: false,
   memories: [],
   isLoadingMemories: false,
+  selectedMemoryIds: new Set<string>(),
+  isMultiSelectMode: false,
   folders: [],
   activeFolderId: 'all',
   showMemoryPanel: false,
@@ -120,6 +136,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleMemoryPanel: () => set((s) => ({ showMemoryPanel: !s.showMemoryPanel })),
   toggleSidebar: () => set((s) => ({ showSidebar: !s.showSidebar })),
   setShowSidebar: (v) => set({ showSidebar: v }),
+
+  // 多选模式
+  toggleMultiSelectMode: () => set((s) => ({
+    isMultiSelectMode: !s.isMultiSelectMode,
+    selectedMemoryIds: !s.isMultiSelectMode ? new Set<string>() : s.selectedMemoryIds,
+  })),
+  toggleMemorySelection: (id) => set((s) => {
+    const newSet = new Set(s.selectedMemoryIds)
+    if (newSet.has(id)) {
+      newSet.delete(id)
+    } else {
+      newSet.add(id)
+    }
+    return { selectedMemoryIds: newSet }
+  }),
+  selectAllMemories: () => set((s) => {
+    const allIds = new Set(s.memories.map((m) => m.id))
+    return { selectedMemoryIds: allIds }
+  }),
+  clearMemorySelection: () => set({ selectedMemoryIds: new Set<string>() }),
+  batchDeleteMemories: async () => {
+    const { selectedMemoryIds } = get()
+    if (selectedMemoryIds.size === 0) return
+    try {
+      const res = await fetch('/api/memories', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedMemoryIds) }),
+      })
+      const data = await res.json()
+      if (data.deleted) {
+        set((s) => ({
+          memories: s.memories.filter((m) => !selectedMemoryIds.has(m.id)),
+          selectedMemoryIds: new Set<string>(),
+          isMultiSelectMode: false,
+        }))
+        await get().fetchFolders()
+      }
+    } catch {
+      // ignore
+    }
+  },
 
   fetchConversations: async () => {
     set({ isLoadingConversations: true })
@@ -264,6 +322,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().fetchFolders()
     } catch {
       // ignore
+    }
+  },
+
+  cleanupMemories: async () => {
+    try {
+      const res = await fetch('/api/memories/cleanup', { method: 'POST' })
+      const data = await res.json()
+      if (!data.error) {
+        await get().fetchMemories()
+        await get().fetchFolders()
+      }
+      return data
+    } catch {
+      return null
     }
   },
 
