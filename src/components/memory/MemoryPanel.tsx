@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Inbox,
   Layers,
+  Clock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +55,43 @@ const categoryConfig: Record<string, { label: string; icon: React.ReactNode; col
   project: { label: '项目信息', icon: <FolderKanban className="h-3.5 w-3.5" />, color: 'bg-orange-500/10 text-orange-600 border-orange-500/20' },
   insight: { label: '洞察观点', icon: <Lightbulb className="h-3.5 w-3.5" />, color: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20' },
   fact: { label: '事实记录', icon: <Pin className="h-3.5 w-3.5" />, color: 'bg-purple-500/10 text-purple-600 border-purple-500/20' },
+}
+
+// 格式化时间
+function formatTime(dateStr: string) {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes}分钟前`
+  if (hours < 24) return `${hours}小时前`
+  if (days < 7) return `${days}天前`
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const h = String(date.getHours()).padStart(2, '0')
+  const m = String(date.getMinutes()).padStart(2, '0')
+
+  if (year === now.getFullYear()) {
+    return `${month}-${day} ${h}:${m}`
+  }
+  return `${year}-${month}-${day} ${h}:${m}`
+}
+
+function formatFullTime(dateStr: string) {
+  const date = new Date(dateStr)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const h = String(date.getHours()).padStart(2, '0')
+  const m = String(date.getMinutes()).padStart(2, '0')
+  const s = String(date.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${h}:${m}:${s}`
 }
 
 const folderIconOptions = ['📁', '🗂️', '📋', '📌', '🎯', '💡', '🔥', '⭐', '❤️', '🚀', '🎨', '📦']
@@ -376,6 +414,19 @@ export function MemoryPanel() {
                                   {memory.value}
                                 </p>
                               )}
+                              {/* 时间信息 */}
+                              <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1" title={`创建时间: ${formatFullTime(memory.createdAt)}`}>
+                                  <Clock className="h-3 w-3" />
+                                  <span>创建: {formatTime(memory.createdAt)}</span>
+                                </div>
+                                {memory.updatedAt !== memory.createdAt && (
+                                  <div className="flex items-center gap-1" title={`修改时间: ${formatFullTime(memory.updatedAt)}`}>
+                                    <Pencil className="h-3 w-3" />
+                                    <span>修改: {formatTime(memory.updatedAt)}</span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                               {/* 移动到文件夹 */}
