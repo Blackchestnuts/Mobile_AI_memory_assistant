@@ -64,13 +64,23 @@ export function ChatArea() {
   return (
     <div className="flex-1 flex flex-col h-full min-w-0">
       {/* 顶部栏 */}
-      <div className="h-14 border-b flex items-center justify-between px-4 shrink-0 gap-2">
+      <div className="h-14 border-b flex items-center justify-between px-3 md:px-4 shrink-0 gap-2 safe-top">
         <div className="flex items-center gap-2 min-w-0">
+          {(
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 md:hidden"
+              onClick={() => setShowSidebar(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          )}
           {!showSidebar && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className="h-8 w-8 shrink-0 hidden md:flex"
               onClick={() => setShowSidebar(true)}
             >
               <Menu className="h-4 w-4" />
@@ -200,15 +210,15 @@ export function ChatArea() {
         </div>
       </div>
 
-      {/* 输入区域 - 始终显示 */}
-      <div className="border-t p-4 shrink-0">
+      {/* 输入区域 - 始终显示，移动端安全区域 */}
+      <div className="border-t p-3 md:p-4 shrink-0 safe-bottom">
         <div className="max-w-3xl mx-auto flex gap-2 items-end">
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Enter发送，Shift+Enter换行)"
+            placeholder="输入消息..."
             className="resize-none min-h-[44px] max-h-[200px]"
             rows={1}
           />

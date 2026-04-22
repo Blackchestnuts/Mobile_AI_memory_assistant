@@ -122,9 +122,14 @@ export function MemoryPanel() {
   }
 
   return (
-    <div className="w-80 border-l bg-muted/30 flex flex-col h-full shrink-0">
+    <div className="w-80 md:w-80 border-l bg-muted/30 flex flex-col h-full shrink-0
+      max-md:w-full max-md:border-l-0 max-md:border-t max-md:rounded-t-2xl max-md:pt-2">
       {/* 头部 */}
       <div className="p-4 border-b shrink-0">
+        {/* 移动端拖拽指示条 */}
+        <div className="md:hidden flex justify-center mb-2">
+          <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+        </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Brain className="h-5 w-5 text-primary" />
