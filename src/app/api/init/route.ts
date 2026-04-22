@@ -1,7 +1,6 @@
 import { db } from '@/lib/db'
 import { ensureDefaultUser } from '@/lib/memory'
 
-// 获取当前用户信息和统计
 export async function GET() {
   try {
     const user = await ensureDefaultUser()
@@ -10,7 +9,7 @@ export async function GET() {
     const conversationCount = await db.conversation.count({ where: { userId: user.id } })
 
     return Response.json({
-      user: { id: user.id, name: user.name, occupation: user.occupation },
+      user: { id: user.id, name: user.name },
       stats: { memoryCount, conversationCount },
     })
   } catch (error) {

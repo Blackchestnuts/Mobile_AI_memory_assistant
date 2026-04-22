@@ -8,15 +8,13 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(cuid())
-  name       String   @default("用户")
-  occupation String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String   @default("用户")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   conversations Conversation[]
   memories      Memory[]
-  memoryFolders MemoryFolder[]
 }
 
 model Conversation {
@@ -44,38 +42,18 @@ model Message {
   @@index([conversationId])
 }
 
-model MemoryFolder {
+model Memory {
   id        String   @id @default(cuid())
   userId    String
-  name      String
-  icon      String   @default("📁")
-  color     String   @default("bg-gray-500/10 text-gray-600 border-gray-500/20")
-  sortOrder Int      @default(0)
+  category  String   // AI自动分类: "profile" | "preference" | "goal" | "project" | "insight" | "fact"
+  key       String
+  value     String
+  embedding String?  // JSON array of embedding vector (768 dimensions)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  memories Memory[]
-
-  @@index([userId])
-}
-
-model Memory {
-  id        String    @id @default(cuid())
-  userId    String
-  folderId  String?
-  category  String    // "profile" | "preference" | "goal" | "project" | "insight" | "fact"
-  key       String
-  value     String
-  source    String?
-  embedding String?   // JSON array of embedding vector (768 dimensions)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder MemoryFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([category])
-  @@index([folderId])
 }

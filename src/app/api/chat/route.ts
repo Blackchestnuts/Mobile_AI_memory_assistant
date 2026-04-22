@@ -1,24 +1,6 @@
 import { db } from '@/lib/db'
 import { buildMemoryPrompt, extractMemoriesFromMessage, ensureDefaultUser } from '@/lib/memory'
-import { chatCompletion } from '@/lib/ai'
-
-// 检查 AI 模型是否可用
-async function checkAIAvailable(): Promise<{ available: boolean; message: string }> {
-  const baseUrl = process.env.DEEPSEEK_BASE_URL || 'http://localhost:11434/v1'
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 3000)
-    const res = await fetch(`${baseUrl}/models`, { signal: controller.signal })
-    clearTimeout(timeout)
-    if (res.ok) return { available: true, message: '' }
-    return { available: false, message: 'AI 模型服务响应异常' }
-  } catch {
-    return {
-      available: false,
-      message: 'AI 模型服务未启动。请确保 Ollama 已安装并运行：\n1. 安装 Ollama → ollama.com\n2. 运行 ollama serve\n3. 下载模型 → ollama pull qwen2.5:7b\n4. 在 .env 中配置 DEEPSEEK_BASE_URL=http://localhost:11434/v1',
-    }
-  }
-}
+import { chatCompletion, checkAIAvailable } from '@/lib/ai'
 
 export async function POST(request: Request) {
   try {
@@ -58,7 +40,6 @@ export async function POST(request: Request) {
     // 检查 AI 是否可用
     const aiStatus = await checkAIAvailable()
     if (!aiStatus.available) {
-      // AI 不可用时，返回友好提示而不是崩溃
       const assistantContent = `⚠️ ${aiStatus.message}`
 
       await db.message.create({
@@ -71,7 +52,7 @@ export async function POST(request: Request) {
       })
     }
 
-    // 构建带记忆的system prompt（传入用户消息以匹配相关记忆）
+    // 构建带记忆的system prompt
     const { prompt: systemPrompt } = await buildMemoryPrompt(userId, message)
 
     // 获取对话历史
@@ -87,12 +68,10 @@ export async function POST(request: Request) {
     ]
 
     // 调用 LLM
-    const result = await chatCompletion({
+    const assistantContent = await chatCompletion({
       messages: chatMessages,
       temperature: 0.7,
-    })
-
-    const assistantContent = result.content || '抱歉，我无法生成回复。'
+    }) || '抱歉，我无法生成回复。'
 
     // 保存助手回复
     await db.message.create({

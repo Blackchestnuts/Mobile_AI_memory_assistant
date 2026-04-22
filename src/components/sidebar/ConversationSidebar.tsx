@@ -37,13 +37,12 @@ export function ConversationSidebar() {
     fetchMemories()
   }, [fetchConversations, fetchMemories])
 
-  const handleNewConversation = async () => {
+  const handleNewConversation = () => {
     setCurrentConversation(null)
   }
 
   const handleSelectConversation = async (id: string) => {
     await fetchConversation(id)
-    // 移动端自动收起侧边栏
     if (window.innerWidth < 768) {
       setShowSidebar(false)
     }
@@ -84,7 +83,6 @@ export function ConversationSidebar() {
   return (
     <>
       <div className="w-72 border-r bg-muted/30 flex flex-col h-full shrink-0">
-        {/* 头部 */}
         <div className="p-4 border-b shrink-0">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -100,16 +98,12 @@ export function ConversationSidebar() {
               <ChevronLeft className="h-4 w-4" />
             </Button>
           </div>
-          <Button
-            className="w-full gap-2"
-            onClick={handleNewConversation}
-          >
+          <Button className="w-full gap-2" onClick={handleNewConversation}>
             <Plus className="h-4 w-4" />
             新对话
           </Button>
         </div>
 
-        {/* 对话列表 - 自定义滚动条 */}
         <div className="flex-1 custom-scrollbar overflow-y-auto">
           <div className="p-2 space-y-1">
             {isLoadingConversations ? (
@@ -155,7 +149,6 @@ export function ConversationSidebar() {
         </div>
       </div>
 
-      {/* 删除确认对话框 */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -4,10 +4,7 @@ const EMBEDDING_BASE_URL = process.env.EMBEDDING_BASE_URL || 'http://localhost:1
 const EMBEDDING_API_KEY = process.env.EMBEDDING_API_KEY || 'ollama'
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'nomic-embed-text'
 
-/**
- * 计算两个向量的余弦相似度
- * 返回值范围 [-1, 1]，值越大表示越相似
- */
+/** 计算两个向量的余弦相似度，返回值范围 [-1, 1] */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (!a || !b || a.length !== b.length || a.length === 0) return 0
 
@@ -25,11 +22,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
 }
 
-/**
- * 调用 Ollama Embedding API 生成文本向量
- * @param text 要生成向量的文本
- * @returns 向量数组，失败返回 null
- */
+/** 调用 Embedding API 生成文本向量，失败返回 null */
 export async function getEmbedding(text: string): Promise<number[] | null> {
   try {
     const response = await fetch(`${EMBEDDING_BASE_URL}/embeddings`, {
@@ -38,29 +31,14 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${EMBEDDING_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input: text,
-      }),
+      body: JSON.stringify({ model: EMBEDDING_MODEL, input: text }),
     })
 
-    if (!response.ok) {
-      console.error('Embedding API error:', response.status)
-      return null
-    }
+    if (!response.ok) return null
 
     const data = await response.json()
     return data.data?.[0]?.embedding || null
-  } catch (error) {
-    console.error('Embedding generation failed:', error)
+  } catch {
     return null
   }
-}
-
-/**
- * 批量生成嵌入向量（用于回填已有记忆）
- */
-export async function getEmbeddings(texts: string[]): Promise<(number[] | null)[]> {
-  const results = await Promise.all(texts.map(text => getEmbedding(text)))
-  return results
 }

@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { ensureDefaultUser } from '@/lib/memory'
+import { getEmbedding } from '@/lib/embedding'
 
 // 更新记忆
 export async function PUT(
@@ -10,7 +11,7 @@ export async function PUT(
     const user = await ensureDefaultUser()
     const { id } = await params
     const body = await request.json()
-    const { category, key, value, folderId } = body
+    const { category, key, value } = body
 
     // 验证记忆属于当前用户
     const existing = await db.memory.findFirst({
@@ -26,10 +27,23 @@ export async function PUT(
         ...(category !== undefined && { category }),
         ...(key !== undefined && { key }),
         ...(value !== undefined && { value }),
-        ...(folderId !== undefined && { folderId }),
         updatedAt: new Date(),
       },
     })
+
+    // 如果 key 或 value 变了，重新生成 embedding
+    if (key !== undefined || value !== undefined) {
+      const text = `${memory.key}: ${memory.value}`
+      getEmbedding(text).then(embedding => {
+        if (embedding) {
+          db.memory.update({
+            where: { id },
+            data: { embedding: JSON.stringify(embedding) },
+          }).catch(() => {})
+        }
+      }).catch(() => {})
+    }
+
     return Response.json(memory)
   } catch (error) {
     console.error('Update memory error:', error)
@@ -46,7 +60,6 @@ export async function DELETE(
     const user = await ensureDefaultUser()
     const { id } = await params
 
-    // 验证记忆属于当前用户
     const existing = await db.memory.findFirst({
       where: { id, userId: user.id },
     })
