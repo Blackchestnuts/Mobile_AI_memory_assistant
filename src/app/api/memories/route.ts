@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { ensureDefaultUser } from '@/lib/memory'
+import { getEmbedding } from '@/lib/embedding'
 
 // 获取所有记忆
 export async function GET() {
@@ -39,6 +40,19 @@ export async function POST(request: Request) {
         folderId: folderId || null,
       },
     })
+
+    // 异步生成 embedding
+    getEmbedding(`${key}: ${value}`)
+      .then(embedding => {
+        if (embedding) {
+          db.memory.update({
+            where: { id: memory.id },
+            data: { embedding: JSON.stringify(embedding) },
+          }).catch(() => {})
+        }
+      })
+      .catch(() => {})
+
     return Response.json(memory)
   } catch (error) {
     console.error('Create memory error:', error)

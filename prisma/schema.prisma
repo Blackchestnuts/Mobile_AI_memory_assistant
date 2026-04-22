@@ -68,6 +68,7 @@ model Memory {
   key       String
   value     String
   source    String?
+  embedding String?   // JSON array of embedding vector (768 dimensions)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
