@@ -16,8 +16,70 @@ export async function ensureDefaultUser() {
 const MAX_MEMORIES_PER_CATEGORY = 3  // 每个分类最多注入3条
 const MAX_MEMORIES_TOTAL = 18         // 总共最多注入18条
 
-// 构建记忆prompt - 智能限制注入数量
-export async function buildMemoryPrompt(userId: string) {
+// 中文停用词表（常见无意义词，不用于匹配）
+const STOP_WORDS = new Set([
+  '的', '了', '是', '在', '我', '有', '和', '就', '不', '人', '都', '一',
+  '这', '中', '大', '为', '上', '个', '国', '们', '到', '说', '时', '也',
+  '子', '得', '里', '去', '那', '要', '会', '对', '着', '能', '他', '她',
+  '你', '它', '吗', '吧', '啊', '呢', '嗯', '哦', '把', '被', '让', '给',
+  '很', '多', '什么', '怎么', '如何', '可以', '请', '帮', '想', '知道',
+  '还是', '但是', '因为', '所以', '如果', '虽然', '可能', '应该', '已经',
+  '一个', '一些', '这个', '那个', '这些', '那些', '自己', '没有', '不是',
+])
+
+// 从文本中提取关键词
+function extractKeywords(text: string): string[] {
+  // 移除标点符号，按空格和中文字符切分
+  const cleaned = text.replace(/[，。！？、；：""''（）【】《》\s,.!?;:'"()\[\]{}<>]/g, ' ')
+  const words = cleaned.split(/\s+/).filter(w => w.length > 0)
+
+  const keywords: string[] = []
+  for (const word of words) {
+    // 跳过停用词和单字（除专有名词外）
+    if (STOP_WORDS.has(word)) continue
+    if (word.length === 1) continue
+
+    keywords.push(word.toLowerCase())
+
+    // 对中文文本做2-3字滑动窗口，提取子词
+    // 例: "人工智能" → ["人工", "智能", "人工智能"]
+    if (/[\u4e00-\u9fa5]/.test(word) && word.length >= 3) {
+      for (let i = 0; i < word.length - 1; i++) {
+        const bigram = word.substring(i, i + 2)
+        if (!STOP_WORDS.has(bigram) && bigram.length === 2) {
+          keywords.push(bigram)
+        }
+      }
+    }
+  }
+
+  return [...new Set(keywords)]  // 去重
+}
+
+// 计算记忆与关键词的相关性分数
+function calculateRelevance(memory: { key: string; value: string; category: string }, keywords: string[]): number {
+  let score = 0
+  const keyLower = memory.key.toLowerCase()
+  const valueLower = memory.value.toLowerCase()
+  const combined = `${keyLower} ${valueLower}`
+
+  for (const keyword of keywords) {
+    const kw = keyword.toLowerCase()
+    // key 完全匹配 → 最高权重
+    if (keyLower === kw) score += 10
+    // key 包含关键词 → 高权重
+    else if (keyLower.includes(kw)) score += 5
+    // value 包含关键词 → 中等权重
+    else if (valueLower.includes(kw)) score += 3
+    // 组合文本包含 → 低权重
+    else if (combined.includes(kw)) score += 1
+  }
+
+  return score
+}
+
+// 构建记忆prompt - 关键词相关性 + 数量限制
+export async function buildMemoryPrompt(userId: string, userMessage?: string) {
   const memories = await db.memory.findMany({
     where: { userId },
     orderBy: { updatedAt: 'desc' },
@@ -40,12 +102,28 @@ export async function buildMemoryPrompt(userId: string) {
     fact: '📌 事实记录',
   }
 
+  // 如果有用户消息，按关键词相关性排序
+  let sortedMemories = memories
+  if (userMessage) {
+    const keywords = extractKeywords(userMessage)
+    if (keywords.length > 0) {
+      // 计算每条记忆的相关性分数
+      const scored = memories.map(m => ({
+        memory: m,
+        relevance: calculateRelevance(m, keywords),
+      }))
+      // 先按相关性降序，相关性相同按更新时间降序
+      scored.sort((a, b) => b.relevance - a.relevance || b.memory.updatedAt.getTime() - a.memory.updatedAt.getTime())
+      sortedMemories = scored.map(s => s.memory)
+    }
+  }
+
   // 按分类分组，每个分类只取最新的 MAX_MEMORIES_PER_CATEGORY 条
   const categorized: Record<string, string[]> = {}
   const categoryCounts: Record<string, number> = {}
   let totalCount = 0
 
-  for (const m of memories) {
+  for (const m of sortedMemories) {
     // 超过总量限制，停止添加
     if (totalCount >= MAX_MEMORIES_TOTAL) break
 

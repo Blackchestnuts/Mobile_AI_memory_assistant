@@ -37,8 +37,8 @@ export async function POST(request: Request) {
       data: { conversationId: conversation.id, role: 'user', content: message },
     })
 
-    // 构建带记忆的system prompt
-    const { prompt: systemPrompt } = await buildMemoryPrompt(userId)
+    // 构建带记忆的system prompt（传入用户消息以匹配相关记忆）
+    const { prompt: systemPrompt } = await buildMemoryPrompt(userId, message)
 
     // 获取对话历史
     const historyMessages = conversation.messages
