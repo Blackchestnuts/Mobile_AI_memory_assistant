@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { ensureDefaultUser, smartAddMemory } from '@/lib/memory'
+import { ensureDefaultUser, smartAddMemory, invalidateMemoryCache } from '@/lib/memory'
 
 // 获取所有记忆
 export async function GET() {
@@ -46,8 +46,9 @@ export async function POST(request: Request) {
           data: { userId: user.id, category, key, value },
         })
       }
+      invalidateMemoryCache(user.id)
     } else {
-      // AI 智能分类
+      // AI 智能分类（内置缓存管理）
       memory = await smartAddMemory(user.id, key, value)
     }
 

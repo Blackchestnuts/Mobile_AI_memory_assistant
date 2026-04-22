@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { ensureDefaultUser } from '@/lib/memory'
+import { ensureDefaultUser, invalidateMemoryCache } from '@/lib/memory'
 import { getEmbedding } from '@/lib/embedding'
 
 // 更新记忆
@@ -44,6 +44,9 @@ export async function PUT(
       }).catch(() => {})
     }
 
+    // 刷新缓存
+    invalidateMemoryCache(user.id)
+
     return Response.json(memory)
   } catch (error) {
     console.error('Update memory error:', error)
@@ -68,6 +71,10 @@ export async function DELETE(
     }
 
     await db.memory.delete({ where: { id } })
+
+    // 刷新缓存
+    invalidateMemoryCache(user.id)
+
     return Response.json({ success: true })
   } catch (error) {
     console.error('Delete memory error:', error)

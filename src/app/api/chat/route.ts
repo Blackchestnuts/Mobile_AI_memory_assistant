@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { buildMemoryPrompt, extractMemoriesFromMessage, ensureDefaultUser } from '@/lib/memory'
+import { buildMemoryPrompt, extractMemoriesFromMessage, ensureDefaultUser, trimHistoryMessages } from '@/lib/memory'
 import { chatCompletion, checkAIAvailable } from '@/lib/ai'
 
 export async function POST(request: Request) {
@@ -55,10 +55,10 @@ export async function POST(request: Request) {
     // 构建带记忆的system prompt
     const { prompt: systemPrompt } = await buildMemoryPrompt(userId, message)
 
-    // 获取对话历史
-    const historyMessages = conversation.messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+    // 获取对话历史（使用窗口限制，只保留最近20条，避免context过长）
+    const historyMessages = trimHistoryMessages(
+      conversation.messages.map(m => ({ role: m.role, content: m.content }))
+    )
 
     // 组装消息列表
     const chatMessages = [
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       data: { conversationId: conversation.id, role: 'assistant', content: assistantContent },
     })
 
-    // 异步提取记忆
+    // 异步提取记忆（内置智能触发，闲聊消息自动跳过）
     extractMemoriesFromMessage(userId, message, assistantContent).catch((err) =>
       console.error('Background memory extraction failed:', err)
     )
